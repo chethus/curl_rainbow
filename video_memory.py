@@ -28,7 +28,7 @@ class VideoReplayMemory:
         self.device = args.device
     
     def sample(self, batch_size):
-        idxs = np.random.randint(0, self.dataset['observations'].shape[0], batch_size)
+        idxs = np.random.randint(0, self.dataset['observations'].shape[0]-1, batch_size)
 
         observations = self.dataset['observations'][idxs]
         next_observations = self.dataset['observations'][idxs + 1]
