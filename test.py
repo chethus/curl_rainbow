@@ -65,7 +65,9 @@ def test(args, T, dqn, val_mem, metrics, results_dir, evaluate=False):
 
   # Return average reward and Q-value
   return {
-    'r_mean': avg_reward,
+    'return mean': avg_reward,
+    'return max': max(T_rewards),
+    'return min': min(T_rewards),
     'q_mean': avg_Q,
     'r_plot': rewards_plot,
     'q_plot': qs_plot,
