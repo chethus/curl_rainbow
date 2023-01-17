@@ -200,14 +200,15 @@ else:
         if args.video:
             video_train_metrics = dqn.video_learn(video_mem)
         dqn.update_momentum_net() # MoCo momentum upate
+      if T  % 1000 == 0:
+        wandb.log({f'training/{k}': v for k, v in train_metrics.items()}, step=T)
+        wandb.log({f'video_training/{k}': v for k, v in video_train_metrics.items()}, step=T)
 
       if T % args.evaluation_interval == 0:
         dqn.eval()  # Set DQN (online network) to evaluation mode
         test_logs = test(args, T, dqn, val_mem, metrics, args.save_dir)  # Test
         log('T = ' + str(T) + ' / ' + str(args.T_max) + ' | Avg. reward: ' + str(test_logs['r_mean']) + ' | Avg. Q: ' + str(test_logs['q_mean']))
         wandb.log(test_logs, step=T)
-        wandb.log({f'training/{k}': v for k, v in train_metrics.items()}, step=T)
-        wandb.log({f'video_training/{k}': v for k, v in video_train_metrics.items()}, step=T)
         
 
         dqn.train()  # Set DQN (online network) back to training mode
