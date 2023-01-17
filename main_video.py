@@ -149,7 +149,7 @@ else:
 
 print('Video data enabled: ', args.video)
 if args.video:
-    video_mem = ReplayMemory(args, args.memory_capacity)
+    video_mem = VideoReplayMemory(args.game, args)
 
 priority_weight_increase = (1 - args.priority_weight) / (args.T_max - args.learn_start)
 
