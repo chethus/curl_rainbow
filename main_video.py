@@ -196,9 +196,10 @@ else:
 
       if T % args.replay_frequency == 0:
         #for _ in range(4):
-        train_metrics = dqn.learn(mem)  # Train with n-step distributional double-Q learning
         if args.video:
-            video_train_metrics = dqn.video_learn(video_mem)
+            train_metrics = dqn.learn_with_video(mem, video_mem)  # Train with n-step distributional double-Q learning
+        else:
+            train_metrics = dqn.learn(mem)  # Train with n-step distributional double-Q learning
         dqn.update_momentum_net() # MoCo momentum upate
       if T  % 1000 == 0:
         wandb.log({f'training/{k}': v for k, v in train_metrics.items()}, step=T)

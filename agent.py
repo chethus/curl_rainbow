@@ -78,7 +78,7 @@ class Agent():
   def act_e_greedy(self, state, epsilon=0.001):  # High ε can reduce evaluation scores drastically
     return np.random.randint(0, self.action_space) if np.random.random() < epsilon else self.act(state)
 
-  def video_learn(self, video_mem):
+  def video_pretrain(self, video_mem):
     idxs, states, next_states, nonterminals= video_mem.sample(self.batch_size)
     aug_states_1 = aug(states).to(device=self.args.device)
     aug_states_2 = aug(states).to(device=self.args.device)
@@ -100,6 +100,82 @@ class Agent():
     self.video_optimiser.step()
     return {
       'video_moco_loss': moco_loss.mean().item(),
+    }
+
+  def learn_with_video(self, mem, video_mem):
+    # Sample transitions
+    idxs, states, actions, returns, next_states, nonterminals, weights = mem.sample(self.batch_size)
+    aug_states_1 = aug(states).to(device=self.args.device)
+    aug_states_2 = aug(states).to(device=self.args.device)
+    # Calculate current state probabilities (online network noise already sampled)
+    log_ps, _ = self.online_net(states, log=True)  # Log probabilities log p(s_t, ·; θonline)
+    _, z_anch = self.online_net(aug_states_1, log=True)
+    _, z_target = self.momentum_net(aug_states_2, log=True)
+    z_proj = torch.matmul(self.online_net.W, z_target.T)
+    logits = torch.matmul(z_anch, z_proj)
+    logits = (logits - torch.max(logits, 1)[0][:, None])
+    logits = logits * 0.1
+    labels = torch.arange(logits.shape[0]).long().to(device=self.args.device)
+    moco_loss = (nn.CrossEntropyLoss()(logits, labels)).to(device=self.args.device)
+
+    # VIDEO
+    _, video_states, _, _ = video_mem.sample(self.batch_size)
+    aug_video_states_1 = aug(video_states).to(device=self.args.device)
+    aug_video_states_2 = aug(video_states).to(device=self.args.device)
+    # Calculate current state probabilities (online network noise already sampled)
+    _, video_z_anch = self.online_net(aug_video_states_1, log=True)
+    _, video_z_target = self.momentum_net(aug_video_states_2, log=True)
+    video_z_proj = torch.matmul(self.online_net.W, video_z_target.T)
+    video_logits = torch.matmul(video_z_anch, video_z_proj)
+    video_logits = (video_logits - torch.max(video_logits, 1)[0][:, None])
+    video_logits = video_logits * 0.1
+    video_labels = torch.arange(video_logits.shape[0]).long().to(device=self.args.device)
+    video_moco_loss = (nn.CrossEntropyLoss()(video_logits, video_labels)).to(device=self.args.device)
+
+    log_ps_a = log_ps[range(self.batch_size), actions]  # log p(s_t, a_t; θonline)
+
+    with torch.no_grad():
+      # Calculate nth next state probabilities
+      pns, _ = self.online_net(next_states)  # Probabilities p(s_t+n, ·; θonline)
+      dns = self.support.expand_as(pns) * pns  # Distribution d_t+n = (z, p(s_t+n, ·; θonline))
+      argmax_indices_ns = dns.sum(2).argmax(1)  # Perform argmax action selection using online network: argmax_a[(z, p(s_t+n, a; θonline))]
+      self.target_net.reset_noise()  # Sample new target net noise
+      pns, _ = self.target_net(next_states)  # Probabilities p(s_t+n, ·; θtarget)
+      pns_a = pns[range(self.batch_size), argmax_indices_ns]  # Double-Q probabilities p(s_t+n, argmax_a[(z, p(s_t+n, a; θonline))]; θtarget)
+
+      # Compute Tz (Bellman operator T applied to z)
+      Tz = returns.unsqueeze(1) + nonterminals * (self.discount ** self.n) * self.support.unsqueeze(0)  # Tz = R^n + (γ^n)z (accounting for terminal states)
+      Tz = Tz.clamp(min=self.Vmin, max=self.Vmax)  # Clamp between supported values
+      # Compute L2 projection of Tz onto fixed support z
+      b = (Tz - self.Vmin) / self.delta_z  # b = (Tz - Vmin) / Δz
+      l, u = b.floor().to(torch.int64), b.ceil().to(torch.int64)
+      # Fix disappearing probability mass when l = b = u (b is int)
+      l[(u > 0) * (l == u)] -= 1
+      u[(l < (self.atoms - 1)) * (l == u)] += 1
+
+      # Distribute probability of Tz
+      m = states.new_zeros(self.batch_size, self.atoms)
+      offset = torch.linspace(0, ((self.batch_size - 1) * self.atoms), self.batch_size).unsqueeze(1).expand(self.batch_size, self.atoms).to(actions)
+      m.view(-1).index_add_(0, (l + offset).view(-1), (pns_a * (u.float() - b)).view(-1))  # m_l = m_l + p(s_t+n, a*)(u - b)
+      m.view(-1).index_add_(0, (u + offset).view(-1), (pns_a * (b - l.float())).view(-1))  # m_u = m_u + p(s_t+n, a*)(b - l)
+
+    td_loss = loss = -torch.sum(m * log_ps_a, 1)  # Cross-entropy loss (minimises DKL(m||p(s_t, a_t)))
+    original_loss = loss + (moco_loss  * self.coeff)
+    loss = loss + ((moco_loss + video_moco_loss) / 2.0  * self.coeff)
+    self.online_net.zero_grad()
+    curl_loss = (weights * loss).mean()
+    curl_loss.mean().backward()  # Backpropagate importance-weighted minibatch loss
+    clip_grad_norm_(self.online_net.parameters(), self.norm_clip)  # Clip gradients by L2 norm
+    self.optimiser.step()
+
+    mem.update_priorities(idxs, original_loss.detach().cpu().numpy())  # Update priorities of sampled transitions
+
+    return {
+      'loss': curl_loss.mean().item(),
+      'moco_loss': (weights * moco_loss).mean().item(),
+      'weight': weights.mean().item(),
+      'td_loss': (weights * td_loss).mean().item(),
+      'video_moco_loss': (weights * video_moco_loss).mean().item(),
     }
 
   def learn(self, mem):
