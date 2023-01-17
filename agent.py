@@ -62,6 +62,7 @@ class Agent():
     for param in self.momentum_net.parameters():
       param.requires_grad = False
     self.optimiser = optim.Adam(self.online_net.parameters(), lr=args.learning_rate, eps=args.adam_eps)
+    self.video_optimiser = optim.Adam(self.online_net.parameters(), lr=args.learning_rate, eps=args.adam_eps)
 
   # Resets noisy weights in all linear layers (of online net only)
   def reset_noise(self):
@@ -76,6 +77,30 @@ class Agent():
   # Acts with an ε-greedy policy (used for evaluation only)
   def act_e_greedy(self, state, epsilon=0.001):  # High ε can reduce evaluation scores drastically
     return np.random.randint(0, self.action_space) if np.random.random() < epsilon else self.act(state)
+
+  def video_learn(self, video_mem):
+    idxs, states, next_states, nonterminals= video_mem.sample(self.batch_size)
+    aug_states_1 = aug(states).to(device=self.args.device)
+    aug_states_2 = aug(states).to(device=self.args.device)
+    # Calculate current state probabilities (online network noise already sampled)
+    log_ps, _ = self.online_net(states, log=True)  # Log probabilities log p(s_t, ·; θonline)
+    _, z_anch = self.online_net(aug_states_1, log=True)
+    _, z_target = self.momentum_net(aug_states_2, log=True)
+    z_proj = torch.matmul(self.online_net.W, z_target.T)
+    logits = torch.matmul(z_anch, z_proj)
+    logits = (logits - torch.max(logits, 1)[0][:, None])
+    logits = logits * 0.1
+    labels = torch.arange(logits.shape[0]).long().to(device=self.args.device)
+    moco_loss = (nn.CrossEntropyLoss()(logits, labels)).to(device=self.args.device)
+
+    self.online_net.zero_grad()
+    curl_loss = (moco_loss).mean()
+    curl_loss.mean().backward()  # Backpropagate importance-weighted minibatch loss
+    clip_grad_norm_(self.online_net.parameters(), self.norm_clip)  # Clip gradients by L2 norm
+    self.video_optimiser.step()
+    return {
+      'video_moco_loss': moco_loss.mean().item(),
+    }
 
   def learn(self, mem):
     # Sample transitions
@@ -120,7 +145,7 @@ class Agent():
       m.view(-1).index_add_(0, (l + offset).view(-1), (pns_a * (u.float() - b)).view(-1))  # m_l = m_l + p(s_t+n, a*)(u - b)
       m.view(-1).index_add_(0, (u + offset).view(-1), (pns_a * (b - l.float())).view(-1))  # m_u = m_u + p(s_t+n, a*)(b - l)
 
-    loss = -torch.sum(m * log_ps_a, 1)  # Cross-entropy loss (minimises DKL(m||p(s_t, a_t)))
+    td_loss = loss = -torch.sum(m * log_ps_a, 1)  # Cross-entropy loss (minimises DKL(m||p(s_t, a_t)))
     loss = loss + (moco_loss * self.coeff)
     self.online_net.zero_grad()
     curl_loss = (weights * loss).mean()
@@ -129,6 +154,12 @@ class Agent():
     self.optimiser.step()
 
     mem.update_priorities(idxs, loss.detach().cpu().numpy())  # Update priorities of sampled transitions
+    return {
+      'loss': curl_loss.mean().item(),
+      'moco_loss': (weights * moco_loss).mean().item(),
+      'weight': weights.mean().item(),
+      'td_loss': (weights * td_loss).mean().item(),
+    }
 
   def update_target_net(self):
     self.target_net.load_state_dict(self.online_net.state_dict())
