@@ -164,7 +164,7 @@ if args.evaluate:
   dqn.eval()  # Set DQN (online network) to evaluation mode
   test_logs = test(args, 0, dqn, val_mem, metrics, args.save_dir, evaluate=True)  # Test
   wandb.log(test_logs, step=T)
-  print('Avg. reward: ' + str(test_logs['r_mean']) + ' | Avg. Q: ' + str(test_logs['q_mean']))
+  print('Avg. reward: ' + str(test_logs['return mean']) + ' | Avg. Q: ' + str(test_logs['q mean']))
 else:
   # Training loop
   dqn.train()
@@ -194,7 +194,7 @@ else:
       if T % args.evaluation_interval == 0:
         dqn.eval()  # Set DQN (online network) to evaluation mode
         test_logs = test(args, T, dqn, val_mem, metrics, args.save_dir)  # Test
-        log('T = ' + str(T) + ' / ' + str(args.T_max) + ' | Avg. reward: ' + str(test_logs['r_mean']) + ' | Avg. Q: ' + str(test_logs['q_mean']))
+        log('T = ' + str(T) + ' / ' + str(args.T_max) + ' | Avg. reward: ' + str(test_logs['return mean']) + ' | Avg. Q: ' + str(test_logs['q mean']))
         wandb.log(test_logs, step=T)
         dqn.train()  # Set DQN (online network) back to training mode
 

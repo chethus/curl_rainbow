@@ -64,6 +64,6 @@ def setup_wandb(hyperparam_dict, entity=None, project='jaxrl_m', exp_prefix='', 
         exp_descriptor=exp_descriptor,
         experiment_id=experiment_id,
     )
-    wandb.config.update(wandb_config)
+    wandb.config.update(wandb_config, allow_val_change=True)
     return run
 

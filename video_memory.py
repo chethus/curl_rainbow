@@ -1,6 +1,5 @@
 import numpy as np
 import os
-import gym
 import gzip
 
 import torch
