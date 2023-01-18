@@ -70,7 +70,7 @@ parser.add_argument('--checkpoint-interval', default=0, help='How often to check
 parser.add_argument('--memory', help='Path to save/load the memory from')
 parser.add_argument('--disable-bzip-memory', action='store_true', help='Don\'t zip the memory file. Not recommended (zipping is a bit slower and much, much smaller)')
 parser.add_argument('--save_dir', type=str, default='experiment_output', help='Directory in which training state and model should be saved.')
-parser.add_argument('--video', action='store_true', help='Use video data')
+parser.add_argument('--video', action='store_true', default=True, help='Use video data')
 parser.add_argument('--intent', action='store_true', help='Use intent or nah')
 parser.add_argument('--expectile', type=float, default=0.5, help='Expectile for computation')
 parser.add_argument('--pretrain-steps', type=int, default=int(0), help='Number of pretraining steps')
