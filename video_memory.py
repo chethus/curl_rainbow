@@ -43,3 +43,54 @@ class VideoReplayMemory:
         torch_next_observations = torch.moveaxis(torch_next_observations, -1, 1) / 255.0
 
         return idxs, torch_observations, torch_next_observations, torch_nonterminals
+
+    def sample_gz(self, batch_size, self_prop=0.1, prop_same_goal_intent=0.5):
+        idxs = np.random.randint(0, self.dataset['observations'].shape[0]-1, batch_size)
+
+        goal_dists = np.where(np.random.rand(batch_size) > 0.5,
+            np.random.choice(100, batch_size),
+            100+np.random.geometric(1/100, batch_size)
+        )
+        goal_idxs = np.clip(idxs + 1 + goal_dists, 0, len(self.dataset['observations']) - 1)
+        same_goal = np.random.rand(batch_size) < self_prop
+        goal_idxs = np.where(same_goal, idxs, goal_idxs)
+
+        intent_goal_dists = np.where(np.random.rand(batch_size) > 0.5,
+            np.random.choice(100, batch_size),
+            100+np.random.geometric(1/100, batch_size)
+        )
+        intent_goal_idxs = np.clip(goal_idxs + intent_goal_dists, 0, len(self.dataset['observations']) - 1)
+        same_intent_goal = np.random.rand(batch_size) < prop_same_goal_intent
+        intent_goal_idxs = np.where(same_intent_goal, goal_idxs, intent_goal_idxs)
+
+        observations = self.dataset['observations'][idxs]
+        next_observations = self.dataset['observations'][idxs + 1]
+        goals = self.dataset['observations'][goal_idxs]
+        intents = self.dataset['observations'][intent_goal_idxs]
+
+        terminals = same_goal.astype(np.float32)
+        nonterminals = 1 - terminals
+        rewards = same_goal.astype(np.float32) - 1
+        
+
+        
+        def process(o):
+            if len(o.shape) > 2:
+                torch_o = torch.from_numpy(o).to(self.device)
+                torch_o = torch.moveaxis(torch_o, -1, 1) / 255.0
+                return torch_o
+            else:
+                return torch.from_numpy(o).to(self.device)
+        
+        outputs = [process(o) for o in [idxs, observations, next_observations, goals, intents, rewards, nonterminals]]
+        return outputs
+        # torch_observations = torch.from_numpy(observations).to(self.device)
+        # torch_next_observations = torch.from_numpy(next_observations).to(self.device)
+        # torch_nonterminals = torch.from_numpy(nonterminals).to(self.device)
+
+        # torch_observations = torch.moveaxis(torch_observations, -1, 1) / 255.0
+        # torch_next_observations = torch.moveaxis(torch_next_observations, -1, 1) / 255.0
+
+
+        # return idxs, torch_observations, torch_next_observations, torch_nonterminals
+        # return idxs, states, next_states, goals, intents, rewards, nonterminals
