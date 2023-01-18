@@ -74,7 +74,7 @@ class Agent():
     return np.random.randint(0, self.action_space) if np.random.random() < epsilon else self.act(state)
 
   def video_loss(self, video_mem):
-    idxs, states, next_states, goals, intents, rewards, nonterminals= video_mem.sample_gz(self.batch_size)
+    idxs, states, next_states, goals, intents, rewards, intent_rewards, nonterminals, intent_nonterminals = video_mem.sample_gz(self.batch_size)
     aug_states = aug(states).to(device=self.args.device)
     aug_next_states = aug(next_states).to(device=self.args.device)
     aug_goals = aug(goals).to(device=self.args.device)
@@ -104,19 +104,21 @@ class Agent():
         phi_s_target = target_aux_s['phi'] * target_aux_z['z']
         psi_z_target = target_aux_z['psi'] * target_aux_z['z']
     
+
     v_sgz = -1 * torch.linalg.norm(phi - psi, dim=-1)
     v_nsgz = -1 * torch.linalg.norm(phi_target - psi_target, dim=-1)
     q_sgz = rewards + self.discount * nonterminals * v_nsgz
 
     if self.args.intent:
         v_szz = -1 * torch.linalg.norm(phi_s_target - psi_z_target, dim=-1)
-        v_nszz = -1 * torch.linalg.norm(phi_target - psi_target, dim=-1)
-        q_szz = -1 + self.discount * v_nszz
+        v_nszz = -1 * torch.linalg.norm(phi_target - psi_z_target, dim=-1)
+        q_szz = intent_rewards + self.discount * intent_nonterminals * v_nszz
 
         adv = q_szz - v_szz
 
     else:
-
+        v_szz = torch.zeros_like(v_sgz)
+        q_szz = torch.zeros_like(q_sgz)
         adv = torch.zeros_like(v_sgz)
 
     def expectile_loss(adv, loss, expectile=0.5):
@@ -128,8 +130,12 @@ class Agent():
     return loss.mean(), {
         'video_loss': loss.mean().item(),
         'v_sgz': v_sgz.mean().item(),
+        'v_szz': v_szz.mean().item(),
+        'q_sgz': q_sgz.mean().item(),
+        'q_szz': q_szz.mean().item(),
         'adv_positive': (adv >= 0).float().mean().item(),
         'adv': adv.mean().item(),
+        'adv max': adv.max().item(),
         'og_phi': torch.linalg.norm(og_phi, dim=-1).mean().item(),
         'phi': torch.linalg.norm(phi, dim=-1).mean().item(),
         'w_a std': self.online_net.fc_z_a.weight_sigma.mean().item(),

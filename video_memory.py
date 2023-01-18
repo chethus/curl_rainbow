@@ -71,8 +71,8 @@ class VideoReplayMemory:
         terminals = same_goal.astype(np.float32)
         nonterminals = 1 - terminals
         rewards = same_goal.astype(np.float32) - 1
-        
-
+        intent_rewards = (idxs == intent_goal_idxs).astype(np.float32) - 1        
+        intent_nonterminals = 1 - (idxs == intent_goal_idxs).astype(np.float32)
         
         def process(o):
             if len(o.shape) > 2:
@@ -82,7 +82,7 @@ class VideoReplayMemory:
             else:
                 return torch.from_numpy(o).to(self.device)
         
-        outputs = [process(o) for o in [idxs, observations, next_observations, goals, intents, rewards, nonterminals]]
+        outputs = [process(o) for o in [idxs, observations, next_observations, goals, intents, rewards, intent_rewards, nonterminals, intent_nonterminals]]
         return outputs
         # torch_observations = torch.from_numpy(observations).to(self.device)
         # torch_next_observations = torch.from_numpy(next_observations).to(self.device)
