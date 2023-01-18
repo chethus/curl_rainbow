@@ -80,6 +80,7 @@ for k, v in vars(args).items():
 
 if not args.exp_descriptor:
   args.exp_descriptor = f'{args.game}_{seed}'
+args.exp_descriptor = args.exp_descriptor.format(**vars(args))
 args.save_dir = os.path.join(args.save_dir, args.exp_prefix, args.exp_descriptor)
 if not os.path.exists(args.save_dir):
   os.makedirs(args.save_dir)

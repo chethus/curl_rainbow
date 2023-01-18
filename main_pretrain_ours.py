@@ -35,7 +35,7 @@ parser.add_argument('--exp_descriptor', type=str, default=None, help='Wandb expe
 parser.add_argument('--seed', type=int, default=seed, help='Random seed')
 parser.add_argument('--disable-cuda', action='store_true', help='Disable CUDA')
 parser.add_argument('--game', type=str, default='breakout', choices=atari_py.list_games(), help='ATARI game')
-parser.add_argument('--T-max', type=int, default=int(1e5), metavar='STEPS', help='Number of training steps (4x number of frames)')
+parser.add_argument('--T-max', type=int, default=int(1e4), metavar='STEPS', help='Number of training steps (4x number of frames)')
 parser.add_argument('--max-episode-length', type=int, default=int(108e3), metavar='LENGTH', help='Max episode length in game frames (0 to disable)')
 parser.add_argument('--history-length', type=int, default=4, metavar='T', help='Number of consecutive states processed')
 parser.add_argument('--architecture', type=str, default='data-efficient', choices=['canonical', 'data-efficient'], metavar='ARCH', help='Network architecture')
@@ -87,6 +87,7 @@ assert args.video, "Video data must be used"
 
 if not args.exp_descriptor:
   args.exp_descriptor = f'noaug_{args.game}_{args.intent}_{args.expectile}_{seed}'
+args.exp_descriptor = args.exp_descriptor.format(**vars(args))
 args.save_dir = os.path.join(args.save_dir, args.exp_prefix, args.exp_descriptor)
 if not os.path.exists(args.save_dir):
   os.makedirs(args.save_dir)
