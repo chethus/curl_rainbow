@@ -132,8 +132,8 @@ class Agent():
         'adv': adv.mean().item(),
         'og_phi': torch.linalg.norm(og_phi, dim=-1).mean().item(),
         'phi': torch.linalg.norm(phi, dim=-1).mean().item(),
-        'w_a std': self.online_net.self.fc_z_a.weight_sigma.mean().item(),
-        'w_v std': self.online_net.self.fc_z_v.weight_sigma.mean().item(),
+        'w_a std': self.online_net.fc_z_a.weight_sigma.mean().item(),
+        'w_v std': self.online_net.fc_z_v.weight_sigma.mean().item(),
     }
   def video_pretrain(self, video_mem):
     loss, info = self.video_loss(video_mem)
