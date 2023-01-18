@@ -43,7 +43,7 @@ class VideoReplayMemory:
 
         return idxs, torch_observations, torch_next_observations, torch_nonterminals
 
-    def sample_gz(self, batch_size, self_prop=0.1, prop_same_goal_intent=0.5):
+    def sample_gz(self, batch_size, self_prop=0.1, prop_same_goal_intent=0.1):
         idxs = np.random.randint(0, self.dataset['observations'].shape[0]-1, batch_size)
 
         goal_dists = np.where(np.random.rand(batch_size) > 0.5,

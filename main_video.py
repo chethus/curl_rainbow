@@ -172,7 +172,7 @@ if args.evaluate:
   dqn.eval()  # Set DQN (online network) to evaluation mode
   test_logs = test(args, 0, dqn, val_mem, metrics, args.save_dir, evaluate=True)  # Test
   wandb.log(test_logs, step=T)
-  print('Avg. reward: ' + str(test_logs['r_mean']) + ' | Avg. Q: ' + str(test_logs['q_mean']))
+  print('Avg. reward: ' + str(test_logs['return mean']) + ' | Avg. Q: ' + str(test_logs['q_mean']))
 else:
   # Training loop
   dqn.train()
@@ -201,14 +201,14 @@ else:
         else:
             train_metrics = dqn.learn(mem)  # Train with n-step distributional double-Q learning
         dqn.update_momentum_net() # MoCo momentum upate
-      if T  % 1000 == 0:
+      if T  % 100 == 0:
         wandb.log({f'training/{k}': v for k, v in train_metrics.items()}, step=T)
         wandb.log({f'video_training/{k}': v for k, v in video_train_metrics.items()}, step=T)
 
       if T % args.evaluation_interval == 0:
         dqn.eval()  # Set DQN (online network) to evaluation mode
         test_logs = test(args, T, dqn, val_mem, metrics, args.save_dir)  # Test
-        log('T = ' + str(T) + ' / ' + str(args.T_max) + ' | Avg. reward: ' + str(test_logs['r_mean']) + ' | Avg. Q: ' + str(test_logs['q_mean']))
+        log('T = ' + str(T) + ' / ' + str(args.T_max) + ' | Avg. reward: ' + str(test_logs['return mean']) + ' | Avg. Q: ' + str(test_logs['q_mean']))
         wandb.log(test_logs, step=T)
         
 

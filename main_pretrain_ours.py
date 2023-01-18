@@ -30,7 +30,7 @@ from test import test
 seed = np.random.randint(12345)
 # Note that hyperparameters may originally be reported in ATARI game frames instead of agent steps
 parser = argparse.ArgumentParser(description='Rainbow')
-parser.add_argument('--exp_prefix', type=str, default='curl_rainbow_ours', help='Wandb experiemnt prefix.')
+parser.add_argument('--exp_prefix', type=str, default='curl_rainbow_ours_pretrain', help='Wandb experiemnt prefix.')
 parser.add_argument('--exp_descriptor', type=str, default=None, help='Wandb experiment descriptor.')
 parser.add_argument('--seed', type=int, default=seed, help='Random seed')
 parser.add_argument('--disable-cuda', action='store_true', help='Disable CUDA')
@@ -51,7 +51,7 @@ parser.add_argument('--priority-exponent', type=float, default=0.5, metavar='ω'
 parser.add_argument('--priority-weight', type=float, default=0.4, metavar='β', help='Initial prioritised experience replay importance sampling weight')
 parser.add_argument('--multi-step', type=int, default=20, metavar='n', help='Number of steps for multi-step return')
 parser.add_argument('--discount', type=float, default=0.99, metavar='γ', help='Discount factor')
-parser.add_argument('--pretrain-target-update', type=int, default=int(2e2), help='Number of steps after which to update target network')
+parser.add_argument('--pretrain-target-update', type=int, default=int(5e2), help='Number of steps after which to update target network')
 parser.add_argument('--target-update', type=int, default=int(2e3), metavar='τ', help='Number of steps after which to update target network')
 parser.add_argument('--reward-clip', type=int, default=1, metavar='VALUE', help='Reward clipping (0 to disable)')
 parser.add_argument('--learning-rate', type=float, default=0.0001, metavar='η', help='Learning rate')
@@ -86,7 +86,7 @@ for k, v in vars(args).items():
 assert args.video, "Video data must be used"
 
 if not args.exp_descriptor:
-  args.exp_descriptor = f'{args.game}_{args.intent}_{args.expectile}_{seed}'
+  args.exp_descriptor = f'noaug_{args.game}_{args.intent}_{args.expectile}_{seed}'
 args.save_dir = os.path.join(args.save_dir, args.exp_prefix, args.exp_descriptor)
 if not os.path.exists(args.save_dir):
   os.makedirs(args.save_dir)
@@ -144,7 +144,16 @@ action_space = env.action_space()
 dqn = Agent(args, env)
 
 # If a model is provided, and evaluate is fale, presumably we want to resume, so try to load memory
-mem = ReplayMemory(args, args.memory_capacity)
+if args.model is not None and not args.evaluate:
+  if not args.memory:
+    raise ValueError('Cannot resume training without memory save path. Aborting...')
+  elif not os.path.exists(args.memory):
+    raise ValueError('Could not find memory file at {path}. Aborting...'.format(path=args.memory))
+
+  mem = load_memory(args.memory, args.disable_bzip_memory)
+
+else:
+  mem = ReplayMemory(args, args.memory_capacity)
 
 print('Video data enabled: ', args.video)
 if args.video:
@@ -183,7 +192,8 @@ else:
         print(f'Video pretraining step {pretrain_step}: {video_metrics}')
     if pretrain_step % args.pretrain_target_update == 0:
         dqn.update_target_net()
-
+    if pretrain_step % 25000 == 0:
+        dqn.save(args.save_dir, f'checkpoint_{pretrain_step}.pth')
   for T in trange(1, args.T_max + 1):
     if done:
       state, done = env.reset(), False
@@ -207,7 +217,7 @@ else:
             train_metrics = dqn.learn_with_video(mem, video_mem)  # Train with n-step distributional double-Q learning
         else:
             train_metrics = dqn.learn(mem)  # Train with n-step distributional double-Q learning
-      if T  % 100 == 0:
+      if T  % 1000 == 0:
         wandb.log({f'training/{k}': v for k, v in train_metrics.items()}, step=T+args.pretrain_steps)
 
       if T % args.evaluation_interval == 0:

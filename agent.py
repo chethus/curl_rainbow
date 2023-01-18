@@ -105,6 +105,7 @@ class Agent():
   def learn_with_video(self, mem, video_mem):
     # Sample transitions
     idxs, states, actions, returns, next_states, nonterminals, weights = mem.sample(self.batch_size)
+
     aug_states_1 = aug(states).to(device=self.args.device)
     aug_states_2 = aug(states).to(device=self.args.device)
     # Calculate current state probabilities (online network noise already sampled)
@@ -200,6 +201,8 @@ class Agent():
       # Calculate nth next state probabilities
       pns, _ = self.online_net(next_states)  # Probabilities p(s_t+n, ·; θonline)
       dns = self.support.expand_as(pns) * pns  # Distribution d_t+n = (z, p(s_t+n, ·; θonline))
+      target_nq = dns.sum(2)
+
       argmax_indices_ns = dns.sum(2).argmax(1)  # Perform argmax action selection using online network: argmax_a[(z, p(s_t+n, a; θonline))]
       self.target_net.reset_noise()  # Sample new target net noise
       pns, _ = self.target_net(next_states)  # Probabilities p(s_t+n, ·; θtarget)
@@ -235,6 +238,13 @@ class Agent():
       'moco_loss': (weights * moco_loss).mean().item(),
       'weight': weights.mean().item(),
       'td_loss': (weights * td_loss).mean().item(),
+      'true_rewards': returns.mean().item(),
+      'true_nonterminals': nonterminals.mean().item(),
+      'target_nq': target_nq.mean().item(),
+      'target_nv': target_nq.max(1).values.mean().item(),
+      'nq_std': target_nq.std(1).mean().item(),
+      'w_a std': self.online_net.fc_z_a.weight_sigma.mean().item(),
+      'w_v std': self.online_net.fc_z_v.weight_sigma.mean().item(),
     }
 
   def update_target_net(self):

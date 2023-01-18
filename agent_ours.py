@@ -75,13 +75,12 @@ class Agent():
 
   def video_loss(self, video_mem):
     idxs, states, next_states, goals, intents, rewards, intent_rewards, nonterminals, intent_nonterminals = video_mem.sample_gz(self.batch_size)
-    aug_states = aug(states).to(device=self.args.device)
-    aug_next_states = aug(next_states).to(device=self.args.device)
-    aug_goals = aug(goals).to(device=self.args.device)
+    aug_states = states # aug(states).to(device=self.args.device)
+    aug_next_states = next_states #aug(next_states).to(device=self.args.device)
+    aug_goals = goals #aug(goals).to(device=self.args.device)
         
     
     _, aux_s = self.online_net(aug_states, log=True)
-    _, target_aux_s = self.target_net(aug_states, log=True)
     _, target_aux_ns = self.target_net(aug_next_states, log=True)
     _, aux_g = self.online_net(aug_goals, log=True)
     _, target_aux_g = self.target_net(aug_goals, log=True)
@@ -92,7 +91,8 @@ class Agent():
     psi_target = target_aux_g['psi']
 
     if self.args.intent:
-        aug_intents = aug(intents).to(device=self.args.device)
+        _, target_aux_s = self.target_net(aug_states, log=True)
+        aug_intents = intents #aug(intents).to(device=self.args.device)
         _, aux_z = self.online_net(aug_intents, log=True)
         _, target_aux_z = self.target_net(intents, log=True)
         phi = phi * aux_z['z']
@@ -124,8 +124,10 @@ class Agent():
     def expectile_loss(adv, loss, expectile=0.5):
         weight = torch.where(adv >=0, expectile, 1 - expectile)
         return weight * loss
+    def huber(x, delta=1.0):
+        return torch.where(torch.abs(x) < delta, 0.5 * x ** 2, delta * (torch.abs(x) - 0.5 * delta))
 
-    loss = (v_sgz - q_sgz) ** 2
+    loss = huber(v_sgz - q_sgz)
     loss = expectile_loss(adv, loss, expectile=self.args.expectile)
     return loss.mean(), {
         'video_loss': loss.mean().item(),
@@ -140,6 +142,9 @@ class Agent():
         'phi': torch.linalg.norm(phi, dim=-1).mean().item(),
         'w_a std': self.online_net.fc_z_a.weight_sigma.mean().item(),
         'w_v std': self.online_net.fc_z_v.weight_sigma.mean().item(),
+        'rewards': rewards.mean().item(),
+        'median td_error': torch.median(q_sgz - v_sgz).item(),
+        'mean td_error': torch.mean(q_sgz - v_sgz).item(),
     }
   def video_pretrain(self, video_mem):
     loss, info = self.video_loss(video_mem)
@@ -161,6 +166,7 @@ class Agent():
       # Calculate nth next state probabilities
       pns, _ = self.online_net(next_states)  # Probabilities p(s_t+n, ·; θonline)
       dns = self.support.expand_as(pns) * pns  # Distribution d_t+n = (z, p(s_t+n, ·; θonline))
+      target_nq = dns.sum(2)
       argmax_indices_ns = dns.sum(2).argmax(1)  # Perform argmax action selection using online network: argmax_a[(z, p(s_t+n, a; θonline))]
       self.target_net.reset_noise()  # Sample new target net noise
       pns, _ = self.target_net(next_states)  # Probabilities p(s_t+n, ·; θtarget)
@@ -196,7 +202,13 @@ class Agent():
     return {
       'loss': curl_loss.mean().item(),
       'weight': weights.mean().item(),
+      'max weight': weights.max().item(),
       'td_loss': (weights * td_loss).mean().item(),
+      'true_rewards': returns.mean().item(),
+      'true_nonterminals': nonterminals.mean().item(),
+      'target_nq': target_nq.mean().item(),
+      'target_nv': target_nq.max(1).values.mean().item(),
+      'nq_std': target_nq.std(1).mean().item(),
       **video_info,
     }
 
@@ -257,6 +269,7 @@ class Agent():
       'moco_loss': (weights * moco_loss).mean().item(),
       'weight': weights.mean().item(),
       'td_loss': (weights * td_loss).mean().item(),
+
     }
 
   def update_target_net(self):
