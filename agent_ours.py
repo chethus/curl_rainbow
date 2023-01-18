@@ -86,7 +86,7 @@ class Agent():
     _, aux_g = self.online_net(aug_goals, log=True)
     _, target_aux_g = self.target_net(aug_goals, log=True)
 
-    phi = aux_s['phi']
+    og_phi = phi = aux_s['phi']
     psi = aux_g['psi']
     phi_target = target_aux_ns['phi']
     psi_target = target_aux_g['psi']
@@ -130,6 +130,8 @@ class Agent():
         'v_sgz': v_sgz.mean().item(),
         'adv_positive': (adv >= 0).float().mean().item(),
         'adv': adv.mean().item(),
+        'og_phi': torch.linalg.norm(og_phi, dim=-1).mean().item(),
+        'phi': torch.linalg.norm(phi, dim=-1).mean().item(),
     }
   def video_pretrain(self, video_mem):
     loss, info = self.video_loss(video_mem)
